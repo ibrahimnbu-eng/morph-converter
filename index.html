@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MORPH — File Converter</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #0a0a0a;
+    --surface:  #111111;
+    --surface2: #181818;
+    --border:   #222222;
+    --accent:   #e8ff47;
+    --red:      #ff4757;
+    --teal:     #4ecdc4;
+    --text:     #f0f0f0;
+    --muted:    #444444;
+    --muted2:   #6b6b6b;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 56px 56px;
+    opacity: 0.35;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 0 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── HEADER ── */
+  header {
+    padding: 52px 0 28px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 48px;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 80px;
+    line-height: 0.85;
+    letter-spacing: 6px;
+  }
+
+  .logo em { color: var(--accent); font-style: normal; }
+
+  .logo-sub {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted2);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: 10px;
+  }
+
+  .server-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted2);
+    letter-spacing: 1px;
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+    flex-shrink: 0;
+  }
+
+  .dot.online  { background: #2ed573; box-shadow: 0 0 6px #2ed57388; }
+  .dot.offline { background: var(--red); }
+
+  /* ── TABS ── */
+  .tabs {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 28px;
+  }
+
+  .tab {
+    flex: 1;
+    padding: 13px 10px;
+    background: var(--surface);
+    border: none;
+    border-right: 1px solid var(--border);
+    color: var(--muted2);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.18s;
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px;
+  }
+
+  .tab:last-child { border-right: none; }
+  .tab:hover { background: var(--surface2); color: var(--text); }
+  .tab.active { background: var(--accent); color: #000; font-weight: 700; }
+
+  /* ── DROP ZONE ── */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 60px 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s;
+    background: var(--surface);
+    margin-bottom: 28px;
+    position: relative;
+  }
+
+  .drop-zone:hover, .drop-zone.over {
+    border-color: var(--accent);
+    background: #0d1000;
+    transform: translateY(-2px);
+  }
+
+  .drop-icon { font-size: 52px; margin-bottom: 14px; display: block; }
+
+  .drop-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 34px;
+    letter-spacing: 3px;
+    margin-bottom: 6px;
+  }
+
+  .drop-sub { font-size: 13px; color: var(--muted2); margin-bottom: 22px; }
+
+  .browse-btn {
+    padding: 10px 30px;
+    background: var(--accent);
+    color: #000;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.18s;
+  }
+
+  .browse-btn:hover { background: #fff; }
+
+  #fileInput { display: none; }
+
+  .fmt-hint {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    margin-top: 18px;
+  }
+
+  /* ── FILE CARDS ── */
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .file-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    animation: slideUp 0.25s ease;
+    transition: border-color 0.2s;
+  }
+
+  .file-card.done    { border-color: #2ed57333; }
+  .file-card.error   { border-color: var(--red)33; }
+  .file-card.loading { border-color: var(--accent)33; }
+
+  .ext-badge {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 17px;
+    letter-spacing: 2px;
+    padding: 7px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    min-width: 66px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .ext-badge.video { color: var(--red);   border-color: #ff475722; background: #ff47570a; }
+  .ext-badge.audio { color: var(--teal);  border-color: #4ecdc422; background: #4ecdc40a; }
+  .ext-badge.image { color: var(--accent);border-color: #e8ff4722; background: #e8ff470a; }
+
+  .file-info { flex: 1; min-width: 0; }
+
+  .file-name {
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 3px;
+  }
+
+  .file-meta {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted2);
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+
+  /* progress */
+  .prog-bar-bg {
+    height: 2px;
+    background: var(--border);
+    border-radius: 1px;
+    overflow: hidden;
+    margin-top: 6px;
+    display: none;
+  }
+
+  .prog-bar-bg.show { display: block; }
+
+  .prog-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 1px;
+    transition: width 0.3s;
+    width: 0%;
+  }
+
+  .prog-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted2);
+    letter-spacing: 1px;
+    display: none;
+  }
+
+  .prog-label.show { display: block; }
+
+  .dl-link {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    text-decoration: underline;
+    cursor: pointer;
+    display: none;
+  }
+
+  .dl-link.show { display: inline-block; }
+
+  /* controls */
+  .card-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .arrow { font-family: 'Bebas Neue', sans-serif; font-size: 22px; color: var(--muted); }
+
+  select {
+    appearance: none;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    padding: 9px 34px 9px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    min-width: 100px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7'%3E%3Cpath d='M0 0l5 7 5-7z' fill='%23555'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    transition: border-color 0.18s;
+  }
+
+  select:hover, select:focus { border-color: var(--accent); outline: none; }
+  select:disabled { opacity: 0.45; cursor: default; }
+
+  .rm-btn {
+    background: none;
+    border: 1px solid transparent;
+    color: var(--muted2);
+    font-size: 17px;
+    width: 30px; height: 30px;
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: all 0.18s;
+    flex-shrink: 0;
+  }
+
+  .rm-btn:hover { color: var(--red); border-color: var(--red); }
+
+  /* ── BOTTOM BAR ── */
+  .bottom-bar {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 28px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+  }
+
+  .bottom-bar.show { display: flex; }
+
+  .file-count {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted2);
+    letter-spacing: 1.5px;
+  }
+
+  .convert-btn {
+    padding: 15px 52px;
+    background: var(--accent);
+    color: #000;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 26px;
+    letter-spacing: 5px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .convert-btn:hover:not(:disabled) {
+    background: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(232,255,71,0.18);
+  }
+
+  .convert-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  /* ── NOTICE ── */
+  .notice {
+    padding: 13px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--muted2);
+    line-height: 1.7;
+    margin-bottom: 28px;
+  }
+
+  .notice strong { color: var(--accent); }
+
+  /* ── FOOTER ── */
+  footer {
+    margin-top: 72px;
+    padding: 28px 0;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer-logo { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 4px; color: var(--muted); }
+  .footer-note { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 1px; }
+
+  @media (max-width: 580px) {
+    .logo { font-size: 56px; }
+    header { padding-top: 36px; }
+    .file-card { flex-wrap: wrap; }
+    .card-controls { width: 100%; justify-content: flex-end; }
+    .convert-btn { width: 100%; text-align: center; }
+    footer { flex-direction: column; gap: 8px; text-align: center; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HEADER -->
+  <header>
+    <div>
+      <div class="logo">MOR<em>PH</em></div>
+      <div class="logo-sub">Universal File Converter</div>
+    </div>
+    <div class="server-status">
+      <div class="dot" id="dot"></div>
+      <span id="statusText">Checking server...</span>
+    </div>
+  </header>
+
+  <!-- NOTICE -->
+  <div class="notice">
+    <strong>Server-side conversion.</strong> Files are sent to your local FastAPI server, converted with FFmpeg &amp; Pillow, then returned instantly. Run <code style="color:var(--accent)">python server.py</code> first.
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab active" id="tab-video" onclick="switchTab('video')">🎬 &nbsp;Video</button>
+    <button class="tab"        id="tab-audio" onclick="switchTab('audio')">🎵 &nbsp;Audio</button>
+    <button class="tab"        id="tab-image" onclick="switchTab('image')">🖼️ &nbsp;Image</button>
+  </div>
+
+  <!-- DROP ZONE -->
+  <div class="drop-zone" id="dropZone">
+    <span class="drop-icon" id="dropIcon">🎬</span>
+    <div class="drop-title">Drop Your Files Here</div>
+    <div class="drop-sub">or click to browse your device</div>
+    <button class="browse-btn" onclick="event.stopPropagation(); fileInput.click()">Browse Files</button>
+    <input type="file" id="fileInput" multiple>
+    <div class="fmt-hint" id="fmtHint">MP4 · AVI · MOV · MKV · WEBM · FLV · WMV · 3GP</div>
+  </div>
+
+  <!-- FILE LIST -->
+  <div id="fileList"></div>
+
+  <!-- BOTTOM BAR -->
+  <div class="bottom-bar" id="bottomBar">
+    <div class="file-count" id="fileCount">0 FILES</div>
+    <button class="convert-btn" id="convertBtn" onclick="convertAll()">CONVERT ALL</button>
+  </div>
+
+  <footer>
+    <div class="footer-logo">MORPH</div>
+    <div class="footer-note">FastAPI + FFmpeg + Pillow · localhost:8000</div>
+  </footer>
+</div>
+
+<script>
+const API = 'http://localhost:8000';
+
+const formats = {
+  video: {
+    input:   ['mp4','avi','mov','mkv','webm','flv','wmv','3gp','m4v','ts'],
+    output:  ['mp4','webm','mov','avi','mkv','flv','3gp','gif'],
+    icon:    '🎬',
+    hint:    'MP4 · AVI · MOV · MKV · WEBM · FLV · WMV · 3GP',
+    color:   'video',
+  },
+  audio: {
+    input:   ['mp3','wav','ogg','flac','aac','m4a','wma','opus','aiff'],
+    output:  ['mp3','wav','ogg','flac','aac','m4a','opus'],
+    icon:    '🎵',
+    hint:    'MP3 · WAV · OGG · FLAC · AAC · M4A · OPUS · AIFF',
+    color:   'audio',
+  },
+  image: {
+    input:   ['jpg','jpeg','png','gif','webp','bmp','tiff','avif'],
+    output:  ['jpg','png','webp','bmp','gif','tiff'],
+    icon:    '🖼️',
+    hint:    'JPG · PNG · WEBP · BMP · GIF · TIFF · AVIF',
+    color:   'image',
+  },
+};
+
+let currentTab = 'video';
+let files = [];
+let idCounter = 0;
+
+// ── Server health check ───────────────────────────────────────────────────────
+async function checkServer() {
+  try {
+    const r = await fetch(`${API}/health`, { signal: AbortSignal.timeout(3000) });
+    const d = await r.json();
+    document.getElementById('dot').className = 'dot online';
+    document.getElementById('statusText').textContent =
+      d.ffmpeg_available ? 'Server online · FFmpeg ready' : 'Server online · FFmpeg missing';
+  } catch {
+    document.getElementById('dot').className = 'dot offline';
+    document.getElementById('statusText').textContent = 'Server offline — run python server.py';
+  }
+}
+
+checkServer();
+setInterval(checkServer, 8000);
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  document.getElementById('dropIcon').textContent = formats[tab].icon;
+  document.getElementById('fmtHint').textContent = formats[tab].hint;
+  fileInput.accept = formats[tab].input.map(e => '.' + e).join(',');
+  files = [];
+  render();
+}
+
+// ── Drag & drop ───────────────────────────────────────────────────────────────
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('over'));
+dropZone.addEventListener('drop',      e  => { e.preventDefault(); dropZone.classList.remove('over'); addFiles(e.dataTransfer.files); });
+dropZone.addEventListener('click',     e  => { if (e.target.classList.contains('browse-btn')) return; fileInput.click(); });
+fileInput.addEventListener('change',   e  => { addFiles(e.target.files); fileInput.value = ''; });
+
+function getExt(name) { return name.split('.').pop().toLowerCase(); }
+
+function addFiles(fileList) {
+  const allowed = formats[currentTab].input;
+  let skipped = 0;
+  Array.from(fileList).forEach(f => {
+    const ext = getExt(f.name);
+    if (!allowed.includes(ext)) { skipped++; return; }
+    files.push({
+      id: idCounter++,
+      file: f,
+      ext,
+      outputFormat: formats[currentTab].output[0],
+      status: 'ready',   // ready | converting | done | error
+      progress: 0,
+      dlUrl: null,
+      outName: null,
+      errorMsg: null,
+    });
+  });
+  if (skipped) alert(`${skipped} file(s) skipped — unsupported in ${currentTab} mode.`);
+  render();
+}
+
+function removeFile(id) { files = files.filter(f => f.id !== id); render(); }
+
+function setFormat(id, fmt) { const f = files.find(f => f.id === id); if (f) f.outputFormat = fmt; }
+
+function fmtBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render() {
+  const list   = document.getElementById('fileList');
+  const bar    = document.getElementById('bottomBar');
+  const count  = document.getElementById('fileCount');
+  const btn    = document.getElementById('convertBtn');
+
+  if (!files.length) { list.innerHTML = ''; bar.classList.remove('show'); return; }
+
+  bar.classList.add('show');
+  const ready = files.filter(f => f.status === 'ready').length;
+  count.textContent = files.length + ' FILE' + (files.length > 1 ? 'S' : '') + (ready ? ` · ${ready} READY` : ' · ALL DONE');
+  btn.disabled = ready === 0 || files.some(f => f.status === 'converting');
+
+  list.innerHTML = files.map(f => {
+    const opts = formats[currentTab].output
+      .map(o => `<option value="${o}" ${o === f.outputFormat ? 'selected':''}>${o.toUpperCase()}</option>`)
+      .join('');
+
+    const isConverting = f.status === 'converting';
+    const isDone       = f.status === 'done';
+    const isError      = f.status === 'error';
+
+    const progBar = `
+      <div class="prog-bar-bg ${isConverting || isDone ? 'show' : ''}">
+        <div class="prog-bar-fill" style="width:${isDone ? 100 : f.progress}%; background:${isDone ? '#2ed573' : 'var(--accent)'}"></div>
+      </div>`;
+
+    const label = isConverting
+      ? `<div class="prog-label show">CONVERTING...</div>`
+      : isDone
+      ? `<div class="prog-label show" style="color:#2ed573">✓ DONE</div>`
+      : isError
+      ? `<div class="prog-label show" style="color:var(--red)">✗ ${f.errorMsg || 'Failed'}</div>`
+      : '';
+
+    const dl = isDone
+      ? `<a class="dl-link show" href="${f.dlUrl}" download="${f.outName}">↓ Download ${f.outName}</a>`
+      : '';
+
+    return `
+      <div class="file-card ${f.status}" id="card-${f.id}">
+        <div class="ext-badge ${formats[currentTab].color}">${f.ext.toUpperCase()}</div>
+        <div class="file-info">
+          <div class="file-name">${f.file.name}</div>
+          <div class="file-meta">${fmtBytes(f.file.size)}</div>
+          ${label}
+          ${dl}
+          ${progBar}
+        </div>
+        <div class="card-controls">
+          <span class="arrow">→</span>
+          <select onchange="setFormat(${f.id}, this.value)" ${isConverting ? 'disabled' : ''}>
+            ${opts}
+          </select>
+          <button class="rm-btn" onclick="removeFile(${f.id})" title="Remove">✕</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── Convert ───────────────────────────────────────────────────────────────────
+async function convertAll() {
+  const ready = files.filter(f => f.status === 'ready');
+  if (!ready.length) return;
+
+  document.getElementById('convertBtn').disabled = true;
+
+  for (const f of ready) {
+    f.status   = 'converting';
+    f.progress = 0;
+    render();
+
+    // Simulate indeterminate progress while waiting
+    let tick = 0;
+    const timer = setInterval(() => {
+      tick += 3;
+      f.progress = Math.min(tick, 85);
+      const fill = document.querySelector(`#card-${f.id} .prog-bar-fill`);
+      if (fill) fill.style.width = f.progress + '%';
+    }, 300);
+
+    try {
+      const form = new FormData();
+      form.append('file', f.file);
+      form.append('output_format', f.outputFormat);
+
+      const res = await fetch(`${API}/convert`, { method: 'POST', body: form });
+
+      clearInterval(timer);
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Server error' }));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      f.dlUrl   = URL.createObjectURL(blob);
+      f.outName = f.file.name.replace(/\.[^.]+$/, '') + '.' + f.outputFormat;
+      f.status  = 'done';
+      f.progress = 100;
+
+    } catch (e) {
+      clearInterval(timer);
+      f.status   = 'error';
+      f.errorMsg = e.message;
+    }
+
+    render();
+  }
+
+  document.getElementById('convertBtn').disabled = false;
+}
+</script>
+</body>
+</html>
