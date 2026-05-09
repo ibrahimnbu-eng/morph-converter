@@ -88,12 +88,17 @@ def get_file_type(ext: str) -> str:
     return "unknown"
 
 def ffmpeg_available() -> bool:
-    return shutil.which("ffmpeg") is not None
+    return (
+        shutil.which("ffmpeg") is not None or
+        shutil.which("/usr/bin/ffmpeg") is not None or
+        os.path.exists("/usr/bin/ffmpeg") or
+        os.path.exists("/nix/var/nix/profiles/default/bin/ffmpeg")
+    )
 
 def run_ffmpeg(input_path: Path, output_path: Path, output_ext: str):
     """Run FFmpeg with sensible defaults per output format."""
-    args = ["ffmpeg", "-y", "-i", str(input_path)]
-
+    ffmpeg_path = shutil.which("ffmpeg") or "/nix/var/nix/profiles/default/bin/ffmpeg"
+args = [ffmpeg_path, "-y", "-i", str(input_path)]
     if output_ext == "gif":
         args += ["-vf", "fps=10,scale=480:-1:flags=lanczos", "-loop", "0"]
     elif output_ext == "mp3":
