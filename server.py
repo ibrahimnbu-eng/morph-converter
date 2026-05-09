@@ -4,14 +4,8 @@ MORPH — File Converter Backend
 Requirements:
     pip install fastapi uvicorn python-multipart Pillow
 
-FFmpeg must be installed on your system:
-    - Windows: https://ffmpeg.org/download.html (add to PATH)
-    - macOS:   brew install ffmpeg
-    - Linux:   sudo apt install ffmpeg
-
 Run:
     python server.py
-    → Server starts at http://localhost:8000
 """
 
 import os
@@ -22,13 +16,12 @@ import shutil
 from pathlib import Path
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 
 app = FastAPI(title="MORPH Converter API")
 
-# Allow frontend (any origin) to call this API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,18 +29,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Temp directory for conversions
 TEMP_DIR = Path(tempfile.gettempdir()) / "morph_converter"
 TEMP_DIR.mkdir(exist_ok=True)
 
-# ── Format definitions ────────────────────────────────────────────────────────
-
-VIDEO_FORMATS  = {"mp4","avi","mov","mkv","webm","flv","wmv","3gp","m4v","ts","gif"}
-AUDIO_FORMATS  = {"mp3","wav","ogg","flac","aac","m4a","wma","opus","aiff"}
-IMAGE_FORMATS  = {"jpg","jpeg","png","gif","webp","bmp","tiff","avif"}
+VIDEO_FORMATS = {"mp4","avi","mov","mkv","webm","flv","wmv","3gp","m4v","ts","gif"}
+AUDIO_FORMATS = {"mp3","wav","ogg","flac","aac","m4a","wma","opus","aiff"}
+IMAGE_FORMATS = {"jpg","jpeg","png","gif","webp","bmp","tiff","avif"}
 
 MIME_MAP = {
-    # video
     "mp4":  "video/mp4",
     "avi":  "video/x-msvideo",
     "mov":  "video/quicktime",
@@ -58,7 +47,6 @@ MIME_MAP = {
     "3gp":  "video/3gpp",
     "m4v":  "video/x-m4v",
     "gif":  "image/gif",
-    # audio
     "mp3":  "audio/mpeg",
     "wav":  "audio/wav",
     "ogg":  "audio/ogg",
@@ -68,7 +56,6 @@ MIME_MAP = {
     "opus": "audio/opus",
     "wma":  "audio/x-ms-wma",
     "aiff": "audio/aiff",
-    # image
     "jpg":  "image/jpeg",
     "jpeg": "image/jpeg",
     "png":  "image/png",
@@ -78,27 +65,38 @@ MIME_MAP = {
     "avif": "image/avif",
 }
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+FFMPEG_PATHS = [
+    "ffmpeg",
+    "/usr/bin/ffmpeg",
+    "/usr/local/bin/ffmpeg",
+    "/nix/var/nix/profiles/default/bin/ffmpeg",
+    "/run/current-system/sw/bin/ffmpeg",
+]
 
-def get_file_type(ext: str) -> str:
+def get_ffmpeg():
+    for path in FFMPEG_PATHS:
+        try:
+            result = subprocess.run([path, "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if result.returncode == 0:
+                return path
+        except Exception:
+            continue
+    return None
+
+def get_file_type(ext):
     ext = ext.lower().lstrip(".")
-    if ext in VIDEO_FORMATS:  return "video"
-    if ext in AUDIO_FORMATS:  return "audio"
-    if ext in IMAGE_FORMATS:  return "image"
+    if ext in VIDEO_FORMATS: return "video"
+    if ext in AUDIO_FORMATS: return "audio"
+    if ext in IMAGE_FORMATS: return "image"
     return "unknown"
 
-def ffmpeg_available() -> bool:
-    return (
-        shutil.which("ffmpeg") is not None or
-        shutil.which("/usr/bin/ffmpeg") is not None or
-        os.path.exists("/usr/bin/ffmpeg") or
-        os.path.exists("/nix/var/nix/profiles/default/bin/ffmpeg")
-    )
+def run_ffmpeg(input_path, output_path, output_ext):
+    ffmpeg = get_ffmpeg()
+    if not ffmpeg:
+        raise RuntimeError("FFmpeg not found on this server.")
 
-def run_ffmpeg(input_path: Path, output_path: Path, output_ext: str):
-    """Run FFmpeg with sensible defaults per output format."""
-    ffmpeg_path = shutil.which("ffmpeg") or "/nix/var/nix/profiles/default/bin/ffmpeg"
-args = [ffmpeg_path, "-y", "-i", str(input_path)]
+    args = [ffmpeg, "-y", "-i", str(input_path)]
+
     if output_ext == "gif":
         args += ["-vf", "fps=10,scale=480:-1:flags=lanczos", "-loop", "0"]
     elif output_ext == "mp3":
@@ -116,21 +114,12 @@ args = [ffmpeg_path, "-y", "-i", str(input_path)]
 
     args.append(str(output_path))
 
-    result = subprocess.run(
-        args,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        timeout=300,   # 5 min max
-    )
-
+    result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
     if result.returncode != 0:
         raise RuntimeError(result.stderr.decode(errors="replace")[-800:])
 
-def convert_image_pillow(input_path: Path, output_path: Path, output_ext: str):
-    """Convert images using Pillow (no FFmpeg needed)."""
+def convert_image_pillow(input_path, output_path, output_ext):
     img = Image.open(input_path)
-
-    # AVIF needs pillow-avif-plugin; fall back gracefully
     if output_ext in ("jpg", "jpeg"):
         if img.mode in ("RGBA", "P", "LA"):
             bg = Image.new("RGB", img.size, (255, 255, 255))
@@ -152,15 +141,15 @@ def convert_image_pillow(input_path: Path, output_path: Path, output_ext: str):
     else:
         img.save(output_path)
 
-# ── Routes ────────────────────────────────────────────────────────────────────
-
 @app.get("/")
 def root():
-    return {"status": "MORPH API running", "ffmpeg": ffmpeg_available()}
+    ffmpeg = get_ffmpeg()
+    return {"status": "MORPH API running", "ffmpeg": ffmpeg or "not found"}
 
 @app.get("/health")
 def health():
-    return {"ok": True, "ffmpeg_available": ffmpeg_available()}
+    ffmpeg = get_ffmpeg()
+    return {"ok": True, "ffmpeg_available": ffmpeg is not None, "ffmpeg_path": ffmpeg}
 
 @app.post("/convert")
 async def convert(
@@ -173,58 +162,45 @@ async def convert(
 
     if file_type == "unknown":
         raise HTTPException(400, f"Unsupported input format: .{original_ext}")
-
     if output_format not in MIME_MAP:
         raise HTTPException(400, f"Unsupported output format: .{output_format}")
 
-    # Save upload to temp
-    job_id     = uuid.uuid4().hex
-    input_path = TEMP_DIR / f"{job_id}_in.{original_ext}"
-    output_path= TEMP_DIR / f"{job_id}_out.{output_format}"
+    job_id      = uuid.uuid4().hex
+    input_path  = TEMP_DIR / f"{job_id}_in.{original_ext}"
+    output_path = TEMP_DIR / f"{job_id}_out.{output_format}"
 
     try:
         with open(input_path, "wb") as f:
             content = await file.read()
             f.write(content)
 
-        # Choose conversion engine
         if file_type == "image":
             convert_image_pillow(input_path, output_path, output_format)
         else:
-            if not ffmpeg_available():
-                raise HTTPException(500, "FFmpeg is not installed on this server.")
             run_ffmpeg(input_path, output_path, output_format)
 
         if not output_path.exists():
             raise HTTPException(500, "Conversion produced no output file.")
 
-        stem = Path(file.filename).stem
+        stem          = Path(file.filename).stem
         download_name = f"{stem}.{output_format}"
-        mime = MIME_MAP.get(output_format, "application/octet-stream")
+        mime          = MIME_MAP.get(output_format, "application/octet-stream")
 
         return FileResponse(
             path=str(output_path),
             media_type=mime,
             filename=download_name,
-            background=None,   # keep file alive for response
         )
 
     except HTTPException:
         raise
     except subprocess.TimeoutExpired:
-        raise HTTPException(504, "Conversion timed out (>5 minutes).")
+        raise HTTPException(504, "Conversion timed out.")
     except Exception as e:
         raise HTTPException(500, f"Conversion failed: {str(e)}")
     finally:
-        # Clean up input; output cleaned after response sent
         try: input_path.unlink(missing_ok=True)
         except: pass
-
-
-@app.on_event("shutdown")
-def cleanup():
-    shutil.rmtree(TEMP_DIR, ignore_errors=True)
-
 
 if __name__ == "__main__":
     import uvicorn
